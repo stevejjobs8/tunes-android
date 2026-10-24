@@ -53,11 +53,12 @@ fun MetrolistTheme(
     }
 
     // Apply pureBlack modification if needed, similar to original logic
-    val colorScheme = remember(baseColorScheme, pureBlack, darkTheme) {
+    val colorScheme = remember(baseColorScheme, pureBlack, darkTheme, themeColor) {
+        val scheme = if (darkTheme && themeColor == TunesSteelColor) baseColorScheme.tunesMetal() else baseColorScheme
         if (darkTheme && pureBlack) {
-            baseColorScheme.pureBlack(true)
+            scheme.pureBlack(true)
         } else {
-            baseColorScheme
+            scheme
         }
     }
 
