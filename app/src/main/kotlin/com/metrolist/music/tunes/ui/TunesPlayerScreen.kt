@@ -33,8 +33,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.background
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -65,6 +68,7 @@ fun TunesPlayerScreen(
     onOpenMenu: () -> Unit,
     onOpenSearch: () -> Unit,
     modifier: Modifier = Modifier,
+    onRingBounds: (Rect) -> Unit = {},
 ) {
     var scrubMs by remember { mutableStateOf<Long?>(null) }
     val shownMs = scrubMs ?: positionMs
@@ -98,6 +102,7 @@ fun TunesPlayerScreen(
                 rotationDeg = rotation,
                 isPlaying = isPlaying,
                 onToggle = onTogglePlay,
+                modifier = Modifier.onGloballyPositioned { onRingBounds(it.boundsInRoot()) },
             )
             Spacer(Modifier.height(32.dp))
             Text(
