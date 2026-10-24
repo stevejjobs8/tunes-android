@@ -1065,6 +1065,8 @@ fun HomeScreen(
 
             if (randomizeHomeOrder) {
                 list.sortedByDescending { section ->
+                    // 튠즈: YouTube's own recommendations always lead, in their order
+                    if (section is HomeSection.HomePageSection) return@sortedByDescending 2000 - section.index
                     // Use a stable seed for each section based on the session seed + section ID hash
                     // This ensures the weight for a specific section remains constant during a session (until refresh)
                     // even if other sections appear/disappear, preventing jumping.
@@ -1131,7 +1133,7 @@ fun HomeScreen(
                 list.sortedByDescending { section ->
                     when (section) {
                         is HomeSection.SimilarRecommendation -> 30 - section.index
-                        is HomeSection.HomePageSection -> 20 - section.index
+                        is HomeSection.HomePageSection -> 200 - section.index // 튠즈: first
                         else -> defaultOrder[section] ?: 0
                     }
                 }
