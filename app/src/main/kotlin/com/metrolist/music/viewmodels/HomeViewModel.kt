@@ -112,6 +112,7 @@ class HomeViewModel @Inject constructor(
     val similarRecommendations = MutableStateFlow<List<SimilarRecommendation>?>(null)
     val accountPlaylists = MutableStateFlow<List<PlaylistItem>?>(null)
     val homePage = MutableStateFlow<HomePage?>(null)
+    val homeStatus = MutableStateFlow("요청 중…")
     val explorePage = MutableStateFlow<ExplorePage?>(null)
     val communityPlaylists = MutableStateFlow<List<CommunityPlaylistItem>?>(null)
     val selectedChip = MutableStateFlow<HomePage.Chip?>(null)
@@ -467,6 +468,7 @@ class HomeViewModel @Inject constructor(
 
             launch(Dispatchers.IO) {
                 YouTube.home().onSuccess { page ->
+                    homeStatus.value = "응답 받음: 섹션 ${page.sections.size}개\n" + YouTube.homeDebug
                     homePage.value = page.copy(
                         sections = page.sections.mapNotNull { section ->
                             val filtered = section.items
@@ -477,7 +479,10 @@ class HomeViewModel @Inject constructor(
                             if (filtered.isEmpty()) null else section.copy(items = filtered)
                         }
                     )
-                }.onFailure { reportException(it) }
+                }.onFailure {
+                    homeStatus.value = "실패: " + it.stackTraceToString().lines().take(14).joinToString("\n")
+                    reportException(it)
+                }
             }
 
             if (YouTube.cookie != null) {

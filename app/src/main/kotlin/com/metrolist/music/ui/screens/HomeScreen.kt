@@ -666,6 +666,7 @@ fun HomeScreen(
     val similarRecommendations by viewModel.similarRecommendations.collectAsStateWithLifecycle()
     val accountPlaylists by viewModel.accountPlaylists.collectAsStateWithLifecycle()
     val homePage by viewModel.homePage.collectAsStateWithLifecycle()
+    val homeStatus by viewModel.homeStatus.collectAsStateWithLifecycle()
     val explorePage by viewModel.explorePage.collectAsStateWithLifecycle()
     val dailyDiscover by viewModel.dailyDiscover.collectAsStateWithLifecycle()
     val communityPlaylists by viewModel.communityPlaylists.collectAsStateWithLifecycle()
@@ -1197,6 +1198,16 @@ fun HomeScreen(
                             viewModel.toggleChip(it)
                         },
                     )
+                }
+
+                item(key = "home_status") {
+                    androidx.compose.foundation.text.selection.SelectionContainer {
+                        Text(
+                            text = "로그인=${com.metrolist.innertube.YouTube.cookie != null}\n$homeStatus",
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(16.dp),
+                        )
+                    }
                 }
 
                 if (isLoading && homePage?.chips.isNullOrEmpty()) {

@@ -127,6 +127,9 @@ object YouTube {
         set(value) {
             innerTube.proxyAuth = value
         }
+    // 튠즈 진단: 마지막 home() 응답의 모양
+    var homeDebug: String = ""
+
     var useLoginForBrowse: Boolean
         get() = innerTube.useLoginForBrowse
         set(value) {
@@ -1596,6 +1599,27 @@ object YouTube {
                     ?.chips
                     ?.mapNotNull { HomePage.Chip.fromChipCloudChipRenderer(it) }
             Timber.d("home() chips: ${chips?.size ?: 0}")
+            homeDebug = buildString {
+                append("contents=${response.contents?.let { c -> listOfNotNull(c.singleColumnBrowseResultsRenderer?.let { "single" }, c.twoColumnBrowseResultsRenderer?.let { "two" }).joinToString() }}")
+                append(" tabs=${response.contents?.singleColumnBrowseResultsRenderer?.tabs?.size}")
+                append(" 칸=${sectionListRender?.contents?.size} 칩=${chips?.size} 이어받기=${continuation != null}\n")
+                sectionListRender?.contents?.forEachIndexed { i, c ->
+                    val kind = listOfNotNull(
+                        c.musicCarouselShelfRenderer?.let { "carousel" }, c.musicShelfRenderer?.let { "shelf" },
+                        c.musicCardShelfRenderer?.let { "card" }, c.gridRenderer?.let { "grid" },
+                        c.itemSectionRenderer?.let { "itemSection" }, c.musicDescriptionShelfRenderer?.let { "desc" },
+                    ).joinToString().ifEmpty { "알 수 없음" }
+                    append("$i: $kind")
+                    c.musicCarouselShelfRenderer?.let { r ->
+                        val t = r.header?.musicCarouselShelfBasicHeaderRenderer?.title?.runs?.firstOrNull()?.text
+                        append(" '$t' 2행=${r.contents.count { it.musicTwoRowItemRenderer != null }}")
+                        append(" 목록=${r.contents.count { it.musicResponsiveListItemRenderer != null }}")
+                        append(" 다중=${r.contents.count { it.musicMultiRowListItemRenderer != null }}")
+                        append(" 전체=${r.contents.size} → ${HomePage.Section.fromMusicCarouselShelfRenderer(r)?.items?.size ?: "버림"}")
+                    }
+                    append("\n")
+                }
+            }
             HomePage(chips, sections, continuation)
         }
 
