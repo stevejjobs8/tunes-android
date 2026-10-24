@@ -1599,6 +1599,115 @@ object YouTube {
             HomePage(chips, sections, continuation)
         }
 
+    /**
+     * 튠즈: the personal recommendations of the regular YouTube home (www.youtube.com), narrowed
+     * to its "Music" chip when there is one. YouTube Music's own home is closed to free accounts
+     * in some regions, while the regular home still recommends from the same watch history.
+     * Returns the videos as songs and a one-line note on what was read, for troubleshooting.
+     */
+    suspend fun youtubeHomeMusic(): Result<Pair<List<SongItem>, String>> =
+        runCatching {
+            val home = Json.parseToJsonElement(
+                innerTube.browse(WEB, browseId = "FEwhat_to_watch", setLogin = true).bodyAsText(),
+            )
+            val chips = mutableListOf<Pair<String, String>>()
+            home.forEachObject { key, value ->
+                if (key == "chipCloudChipRenderer" || key == "chipViewModel") {
+                    val text = value.firstString("simpleText", "text", "content")
+                    val token = value.firstString("token")
+                    if (text != null && token != null) chips += text to token
+                }
+            }
+            val musicChip = chips.firstOrNull { (text, _) ->
+                text.equals("Music", ignoreCase = true) || text == "음악"
+            }
+            val feed = musicChip?.let { (_, token) ->
+                Json.parseToJsonElement(innerTube.browse(WEB, continuation = token, setLogin = true).bodyAsText())
+            } ?: home
+            val videos = webVideos(feed)
+            val songs = if (musicChip != null) videos else videos.filter { it.looksLikeMusic() }
+            songs.distinctBy { it.id } to
+                "칩 ${chips.size}개(${chips.take(8).joinToString { it.first }}), 음악 칩=${musicChip != null}, 영상 ${videos.size} → 음악 ${songs.size}"
+        }
+
+    private fun SongItem.looksLikeMusic(): Boolean {
+        val channel = artists.firstOrNull()?.name.orEmpty()
+        return channel.endsWith(" - Topic") || channel.contains("VEVO", ignoreCase = true) ||
+            listOf("official", "audio", "lyric", "m/v", " mv", "music", "playlist", "ost", "가사", "노래", "플레이리스트", "뮤직", "커버", "cover", "live")
+                .any { title.contains(it, ignoreCase = true) }
+    }
+
+    /** Videos in a www.youtube.com browse response, in both the old (videoRenderer) and new (lockupViewModel) shapes. */
+    private fun webVideos(root: kotlinx.serialization.json.JsonElement): List<SongItem> {
+        val out = mutableListOf<SongItem>()
+        root.forEachObject { key, value ->
+            val obj = value as? kotlinx.serialization.json.JsonObject ?: return@forEachObject
+            when (key) {
+                "videoRenderer" -> {
+                    val id = obj.str("videoId") ?: return@forEachObject
+                    val title = obj.obj("title")?.firstString("text", "simpleText") ?: return@forEachObject
+                    val owner = (obj.obj("ownerText") ?: obj.obj("longBylineText"))
+                    out += SongItem(
+                        id = id,
+                        title = title,
+                        artists = listOfNotNull(owner?.firstString("text")?.let { Artist(it, owner.firstString("browseId")) }),
+                        duration = obj.obj("lengthText")?.firstString("simpleText")?.parseTime(),
+                        thumbnail = "https://i.ytimg.com/vi/$id/hqdefault.jpg",
+                    )
+                }
+                "lockupViewModel" -> {
+                    if (obj.str("contentType") != "LOCKUP_CONTENT_TYPE_VIDEO") return@forEachObject
+                    val id = obj.str("contentId") ?: return@forEachObject
+                    val meta = obj.obj("metadata")?.obj("lockupMetadataViewModel") ?: return@forEachObject
+                    val title = meta.obj("title")?.str("content") ?: return@forEachObject
+                    val channel = meta.obj("metadata")?.firstString("content")
+                    out += SongItem(
+                        id = id,
+                        title = title,
+                        artists = listOfNotNull(channel?.let { Artist(it, meta.firstString("browseId")) }),
+                        thumbnail = "https://i.ytimg.com/vi/$id/hqdefault.jpg",
+                    )
+                }
+            }
+        }
+        return out
+    }
+
+    private fun kotlinx.serialization.json.JsonElement.forEachObject(
+        block: (String, kotlinx.serialization.json.JsonElement) -> Unit,
+    ) {
+        when (this) {
+            is kotlinx.serialization.json.JsonObject -> forEach { (k, v) ->
+                block(k, v)
+                v.forEachObject(block)
+            }
+            is kotlinx.serialization.json.JsonArray -> forEach { it.forEachObject(block) }
+            else -> {}
+        }
+    }
+
+    /** First string value found under any of [keys], searching depth first. */
+    private fun kotlinx.serialization.json.JsonElement.firstString(vararg keys: String): String? {
+        when (this) {
+            is kotlinx.serialization.json.JsonObject -> {
+                for (k in keys) {
+                    val v = this[k]
+                    if (v is kotlinx.serialization.json.JsonPrimitive && v.isString) return v.content
+                }
+                for (v in values) v.firstString(*keys)?.let { return it }
+            }
+            is kotlinx.serialization.json.JsonArray -> for (v in this) v.firstString(*keys)?.let { return it }
+            else -> {}
+        }
+        return null
+    }
+
+    private fun kotlinx.serialization.json.JsonObject.str(key: String): String? =
+        (this[key] as? kotlinx.serialization.json.JsonPrimitive)?.takeIf { it.isString }?.content
+
+    private fun kotlinx.serialization.json.JsonObject.obj(key: String): kotlinx.serialization.json.JsonObject? =
+        this[key] as? kotlinx.serialization.json.JsonObject
+
     private suspend fun homeContinuation(continuation: String): Result<HomePage> =
         runCatching {
             val response =

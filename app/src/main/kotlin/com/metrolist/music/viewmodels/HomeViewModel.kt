@@ -469,7 +469,7 @@ class HomeViewModel @Inject constructor(
 
             launch(Dispatchers.IO) {
                 YouTube.home().onSuccess { ytPage ->
-                    val page = if (ytPage.sections.isEmpty()) ytPage.copy(sections = radioSections()) else ytPage
+                    val page = if (ytPage.sections.isEmpty()) ytPage.copy(sections = youtubeHomeSections() + radioSections()) else ytPage
                     homePage.value = page.copy(
                         sections = page.sections.mapNotNull { section ->
                             val filtered = section.items
@@ -577,6 +577,25 @@ class HomeViewModel @Inject constructor(
                     homePage.value?.sections?.flatMap { it.items }.orEmpty()
         }
     }
+
+    // 튠즈: the music the regular YouTube home recommends, in shelves of 10
+    private suspend fun youtubeHomeSections(): List<HomePage.Section> {
+        val (songs, note) = YouTube.youtubeHomeMusic()
+            .onFailure { youtubeHomeNote.value = "실패: $it" }
+            .getOrNull() ?: return emptyList()
+        youtubeHomeNote.value = note
+        return songs.chunked(10).take(4).mapIndexed { i, chunk ->
+            HomePage.Section(
+                title = if (i == 0) "유튜브 추천" else "유튜브 추천 ${i + 1}",
+                label = null,
+                thumbnail = null,
+                endpoint = null,
+                items = chunk,
+            )
+        }
+    }
+
+    val youtubeHomeNote = MutableStateFlow<String?>(null)
 
     // 튠즈: in Korea, YouTube Music answers free accounts with an empty home ("only available
     // to Premium members"), while radios still work. Fill the home with the radios of songs
