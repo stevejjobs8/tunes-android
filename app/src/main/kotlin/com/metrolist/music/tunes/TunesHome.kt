@@ -45,6 +45,7 @@ import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.media3.common.MediaItem
 import androidx.navigation.NavController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import coil3.compose.AsyncImage
@@ -54,6 +55,7 @@ import com.metrolist.innertube.models.WatchEndpoint
 import com.metrolist.music.LocalDatabase
 import com.metrolist.music.LocalPlayerConnection
 import com.metrolist.music.LocalSyncUtils
+import com.metrolist.music.db.entities.PlaylistSong
 import com.metrolist.music.extensions.toMediaItem
 import com.metrolist.music.models.MediaMetadata
 import com.metrolist.music.models.toMediaMetadata
@@ -63,6 +65,8 @@ import com.metrolist.music.tunes.ui.RingItem
 import com.metrolist.music.tunes.ui.RingRackScreen
 import com.metrolist.music.tunes.ui.SearchHit
 import com.metrolist.music.tunes.ui.TunesPlayerScreen
+import com.metrolist.music.tunes.ui.TrackItem
+import com.metrolist.music.tunes.ui.TunesPlaylistScreen
 import com.metrolist.music.tunes.ui.TunesSearchSheet
 import com.metrolist.music.ui.menu.playlistDuplicatesBatched
 import kotlinx.coroutines.Dispatchers
@@ -76,7 +80,7 @@ import kotlin.math.PI
 import kotlin.math.roundToInt
 import kotlin.math.sin
 
-private enum class TunesPage { Player, Rings, Hidden }
+private enum class TunesPage { Player, Rings, Playlist, Hidden }
 
 /** A search result's cover on its way into the main ring. */
 private data class Flight(
@@ -95,6 +99,7 @@ fun TunesHomeOverlay(navController: NavController) {
     var page by rememberSaveable { mutableStateOf(TunesPage.Player) }
     var searchOpen by rememberSaveable { mutableStateOf(false) }
     var mountedRingId by rememberSaveable { mutableStateOf<String?>(null) }
+    var openPlaylistId by rememberSaveable { mutableStateOf<String?>(null) }
 
     val playerConnection = LocalPlayerConnection.current
     val database = LocalDatabase.current
@@ -180,6 +185,7 @@ fun TunesHomeOverlay(navController: NavController) {
     val backStackEntry by navController.currentBackStackEntryAsState()
     val atRoot = backStackEntry != null && navController.previousBackStackEntry == null
     BackHandler(enabled = page == TunesPage.Rings) { page = TunesPage.Player }
+    BackHandler(enabled = page == TunesPage.Playlist) { page = TunesPage.Rings }
     BackHandler(enabled = page == TunesPage.Hidden && atRoot) { page = TunesPage.Player }
     BackHandler(enabled = page == TunesPage.Player && searchOpen) { searchOpen = false }
 
@@ -230,13 +236,44 @@ fun TunesHomeOverlay(navController: NavController) {
                             }
                         },
                         onOpen = {
-                            val id = mountedId ?: return@RingRackScreen
-                            page = TunesPage.Hidden
-                            navController.navigate("local_playlist/$id")
+                            openPlaylistId = mountedId ?: return@RingRackScreen
+                            page = TunesPage.Playlist
                         },
                         onBack = { page = TunesPage.Player },
                         onMore = { page = TunesPage.Hidden },
                     )
+
+                TunesPage.Playlist -> {
+                    val id = openPlaylistId
+                    val playlist = playlists.firstOrNull { it.id == id }
+                    val entries by remember(id) { id?.let { database.playlistSongs(it) } ?: MutableStateFlow(emptyList<PlaylistSong>()) }
+                        .collectAsState(initial = emptyList())
+                    val tracks =
+                        entries.map {
+                            TrackItem(
+                                id = it.song.id,
+                                title = it.song.song.title,
+                                artist = it.song.artists.joinToString { a -> a.name },
+                                coverUrl = it.song.song.thumbnailUrl,
+                                durationMs = it.song.song.duration * 1000L,
+                            )
+                        }
+                    fun play(items: List<MediaItem>, start: Int) {
+                        if (items.isEmpty()) return
+                        playerConnection?.playQueue(ListQueue(title = playlist?.playlist?.name, items = items, startIndex = start))
+                        page = TunesPage.Player
+                    }
+                    TunesPlaylistScreen(
+                        name = playlist?.playlist?.name ?: "",
+                        coverUrl = playlist?.thumbnails?.firstOrNull(),
+                        tracks = tracks,
+                        nowPlayingId = metadata?.id,
+                        onBack = { page = TunesPage.Rings },
+                        onPlayAll = { play(entries.map { it.song.toMediaItem() }, 0) },
+                        onShuffle = { play(entries.map { it.song.toMediaItem() }.shuffled(), 0) },
+                        onPlayTrack = { index -> play(entries.map { it.song.toMediaItem() }, index) },
+                    )
+                }
 
                 TunesPage.Hidden -> Unit
             }

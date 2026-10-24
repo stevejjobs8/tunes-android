@@ -263,10 +263,6 @@ fun SpinningCoverRing(
                 )
             }
         }
-        MetalLamp(
-            on = isPlaying,
-            modifier = Modifier.align(Alignment.TopCenter).offset(y = 6.dp),
-        )
     }
 }
 
