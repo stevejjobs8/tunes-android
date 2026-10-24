@@ -19,6 +19,7 @@ concurrency:
 
 jobs:
   build:
+    if: github.repository == 'MetrolistGroup/Metrolist'
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 20
 

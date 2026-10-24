@@ -1,7 +1,7 @@
 # 튠즈: builds the personal APK on GitHub's own runners and publishes it as the
 # "tunes-latest" release, so the phone can download it from one fixed link.
 # Upstream Metrolist workflows need paid runners and Metrolist's signing secrets,
-# so they are disabled in this fork; this is the only workflow that runs here.
+# so their jobs carry `if: github.repository == 'MetrolistGroup/Metrolist'` and skip here.
 #
 # Signing: set the repository secrets TUNES_KEYSTORE_B64 (base64 of a .keystore)
 # and TUNES_KEYSTORE_PASSWORD (store and key password, alias "tunes") so every

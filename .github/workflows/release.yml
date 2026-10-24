@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   check-version:
-    if: "!contains(github.ref, 'refs/tags')"
+    if: github.repository == 'MetrolistGroup/Metrolist' && (!contains(github.ref, 'refs/tags'))
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 15
     outputs:
@@ -85,7 +85,7 @@ jobs:
 
   build:
     needs: check-version
-    if: needs.check-version.outputs.version_changed == 'true' || github.event_name == 'workflow_dispatch'
+    if: github.repository == 'MetrolistGroup/Metrolist' && (needs.check-version.outputs.version_changed == 'true' || github.event_name == 'workflow_dispatch')
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 15
     strategy:
@@ -174,7 +174,7 @@ jobs:
 
   create-release:
     needs: [check-version, build]
-    if: needs.check-version.outputs.version_changed == 'true' || github.event_name == 'workflow_dispatch'
+    if: github.repository == 'MetrolistGroup/Metrolist' && (needs.check-version.outputs.version_changed == 'true' || github.event_name == 'workflow_dispatch')
     permissions:
       contents: write
     runs-on: blacksmith-4vcpu-ubuntu-2404
