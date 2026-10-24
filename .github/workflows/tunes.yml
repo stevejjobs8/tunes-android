@@ -17,6 +17,9 @@ on:
       - "**.md"
       - "fastlane/**"
       - "assets/**"
+  # Design and feature branches get a test APK on their PR (not published)
+  pull_request:
+    branches: ["main"]
 
 permissions:
   contents: write
@@ -80,6 +83,7 @@ jobs:
           path: tunes.apk
 
       - name: Publish to the tunes-latest release
+        if: github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: tunes-latest
