@@ -1,6 +1,7 @@
 package com.metrolist.innertube
 
 import com.metrolist.innertube.models.AccountInfo
+import com.metrolist.innertube.models.Album
 import com.metrolist.innertube.models.AlbumItem
 import com.metrolist.innertube.models.Artist
 import com.metrolist.innertube.models.ArtistItem
@@ -515,7 +516,7 @@ object YouTube {
                                 ?.url!!,
                         explicit = false, // TODO: Extract explicit badge for albums from YouTube response
                     )
-                val albumSongsList =
+                var albumSongsList =
                     if (withSongs) {
                         albumSongs(
                             playlistId,
@@ -524,6 +525,25 @@ object YouTube {
                     } else {
                         emptyList()
                     }
+                // 튠즈: the "VL<playlistId>" shelf can come back without tracks (seen for KR
+                // accounts, 2026-10). Fall back to the track shelf on the album page itself,
+                // then to the album's playlist through the playlist parser.
+                if (withSongs && albumSongsList.isEmpty()) {
+                    albumSongsList =
+                        response.contents.twoColumnBrowseResultsRenderer.secondaryContents
+                            ?.sectionListRenderer
+                            ?.contents
+                            ?.firstNotNullOfOrNull { it.musicShelfRenderer?.contents }
+                            ?.getItems()
+                            ?.mapNotNull { AlbumPage.getSong(it, albumItem) }
+                            .orEmpty()
+                }
+                if (withSongs && albumSongsList.isEmpty()) {
+                    albumSongsList =
+                        playlist(playlistId).getOrNull()?.songs.orEmpty().map { song ->
+                            if (song.album == null) song.copy(album = Album(albumItem.title, browseId)) else song
+                        }
+                }
                 // When YouTube credits the album to a label/distributor channel (the header
                 // strapline) but every track names the same performing artist, surface the
                 // performer as the album artist instead of the label.
