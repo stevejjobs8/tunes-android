@@ -52,8 +52,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.metrolist.music.R
 
-/** About 33 rpm, so the cover turns like a record at the speed of playback. */
-private const val DEGREES_PER_SECOND = 198f
+/** One slow turn every 8 seconds of playback. */
+private const val DEGREES_PER_SECOND = 45f
 
 @Composable
 fun TunesPlayerScreen(
