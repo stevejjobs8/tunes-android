@@ -42,6 +42,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -50,11 +51,18 @@ import androidx.navigation.NavController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import coil3.compose.AsyncImage
 import com.metrolist.innertube.YouTube
+import com.metrolist.innertube.models.AlbumItem
+import com.metrolist.innertube.models.ArtistItem
+import com.metrolist.innertube.models.PlaylistItem
 import com.metrolist.innertube.models.SongItem
+import com.metrolist.innertube.models.YTItem
 import com.metrolist.innertube.models.WatchEndpoint
 import com.metrolist.music.LocalDatabase
 import com.metrolist.music.LocalPlayerConnection
 import com.metrolist.music.LocalSyncUtils
+import com.metrolist.music.constants.PauseSearchHistoryKey
+import com.metrolist.music.utils.dataStore
+import com.metrolist.music.utils.get
 import com.metrolist.music.db.entities.PlaylistSong
 import com.metrolist.music.extensions.toMediaItem
 import com.metrolist.music.models.MediaMetadata
@@ -80,6 +88,16 @@ import kotlin.math.PI
 import kotlin.math.roundToInt
 import kotlin.math.sin
 
+/** What the search sheet shows for a result; null for results it cannot play. */
+private fun YTItem.toSearchHit(): SearchHit? =
+    when (this) {
+        is SongItem -> SearchHit(id, title, artists.joinToString { it.name }, thumbnail)
+        is AlbumItem -> SearchHit(id, title, artists.orEmpty().joinToString { it.name }, thumbnail)
+        is PlaylistItem -> SearchHit(id, title, author?.name.orEmpty(), thumbnail)
+        is ArtistItem -> if (shuffleEndpoint != null || radioEndpoint != null) SearchHit(id, title, "", thumbnail) else null
+        else -> null
+    }
+
 private enum class TunesPage { Player, Rings, Playlist, Hidden }
 
 /** A search result's cover on its way into the main ring. */
@@ -104,6 +122,7 @@ fun TunesHomeOverlay(navController: NavController) {
     val playerConnection = LocalPlayerConnection.current
     val database = LocalDatabase.current
     val syncUtils = LocalSyncUtils.current
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
     val metadataFlow: StateFlow<MediaMetadata?> = playerConnection?.mediaMetadata ?: remember { MutableStateFlow(null) }
@@ -140,29 +159,31 @@ fun TunesHomeOverlay(navController: NavController) {
 
     // Search
     var query by rememberSaveable { mutableStateOf("") }
-    var songs by remember { mutableStateOf<List<SongItem>>(emptyList()) }
+    var results by remember { mutableStateOf<List<YTItem>>(emptyList()) }
+    val songs = results.filterIsInstance<SongItem>()
     var searching by remember { mutableStateOf(false) }
     var searchNote by remember { mutableStateOf<String?>(null) }
-    val hits = songs.map { SearchHit(it.id, it.title, it.artists.joinToString { a -> a.name }, it.thumbnail) }
+    val hits = results.mapNotNull { it.toSearchHit() }
     fun runSearch() {
         val q = query.trim()
         if (q.isEmpty()) return
         scope.launch {
             searching = true
             searchNote = null
-            // Same request as Metrolist's own search screen (known to work), then songs only.
-            val summary =
-                YouTube.searchSummary(q).map { page ->
-                    page.summaries.flatMap { it.items }.filterIsInstance<SongItem>().distinctBy { it.id }
-                }
-            val found =
-                summary.getOrNull()?.takeIf { it.isNotEmpty() }
-                    ?: YouTube.search(q, YouTube.SearchFilter.FILTER_SONG).map { it.items.filterIsInstance<SongItem>() }.getOrNull()
-            songs = found.orEmpty()
+            // Same request as Metrolist's own search screen, signed in like it unless search history is paused.
+            val signedIn = !context.dataStore.get(PauseSearchHistoryKey, false)
+            val summary = YouTube.searchSummary(q, recordSearchHistory = signedIn)
+            val items = summary.getOrNull()?.summaries?.flatMap { it.items }.orEmpty()
+            // Songs and videos first, then albums, playlists and artists.
+            results =
+                items
+                    .filter { it.toSearchHit() != null }
+                    .distinctBy { it.id }
+                    .sortedBy { if (it is SongItem) 0 else 1 }
             searchNote =
                 when {
-                    found == null -> "검색 실패: " + (summary.exceptionOrNull()?.let { it.message ?: it::class.simpleName } ?: "알 수 없음")
-                    found.isEmpty() -> "결과 없음"
+                    summary.isFailure -> "검색 실패: " + summary.exceptionOrNull()?.let { it.message ?: it::class.simpleName }
+                    results.isEmpty() -> "결과 없음 (받은 항목 ${items.size}개: " + items.groupingBy { it::class.simpleName }.eachCount() + ")"
                     else -> null
                 }
             summary.exceptionOrNull()?.let { android.util.Log.w("Tunes", "search failed", it) }
@@ -293,8 +314,16 @@ fun TunesHomeOverlay(navController: NavController) {
                 note = searchNote,
                 rings = rings,
                 onPick = { hit, bounds ->
-                    val song = songs.firstOrNull { it.id == hit.id } ?: return@TunesSearchSheet
-                    playerConnection?.playQueue(YouTubeQueue(WatchEndpoint(videoId = song.id), song.toMediaMetadata()))
+                    val item = results.firstOrNull { it.id == hit.id } ?: return@TunesSearchSheet
+                    val queue =
+                        when (item) {
+                            is SongItem -> YouTubeQueue(WatchEndpoint(videoId = item.id), item.toMediaMetadata())
+                            is AlbumItem -> YouTubeQueue(WatchEndpoint(playlistId = item.playlistId))
+                            is PlaylistItem -> YouTubeQueue(item.playEndpoint ?: WatchEndpoint(playlistId = item.id.removePrefix("VL")))
+                            is ArtistItem -> YouTubeQueue(item.shuffleEndpoint ?: item.radioEndpoint ?: return@TunesSearchSheet)
+                            else -> return@TunesSearchSheet
+                        }
+                    playerConnection?.playQueue(queue)
                     flight = Flight(hit.coverUrl, bounds)
                     searchOpen = false
                 },
