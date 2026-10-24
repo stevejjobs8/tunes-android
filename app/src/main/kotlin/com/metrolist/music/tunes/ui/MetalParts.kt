@@ -161,7 +161,7 @@ fun SpinningCoverRing(
     isPlaying: Boolean,
     onToggle: () -> Unit,
     modifier: Modifier = Modifier,
-    ringSize: Dp = 330.dp,
+    ringSize: Dp = 260.dp,
 ) {
     val haptic = LocalHapticFeedback.current
     val playIconAlpha by animateFloatAsState(if (isPlaying) 0f else 1f, tween(300), label = "playIcon")
