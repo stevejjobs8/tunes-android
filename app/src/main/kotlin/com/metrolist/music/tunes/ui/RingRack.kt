@@ -11,7 +11,6 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -46,7 +45,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
@@ -78,11 +76,7 @@ fun PlaylistRing(
     modifier: Modifier = Modifier,
 ) {
     Box(modifier, contentAlignment = Alignment.Center) {
-        Image(
-            painter = painterResource(R.drawable.tunes_ring),
-            contentDescription = null,
-            modifier = Modifier.fillMaxSize(),
-        )
+        RingTexture(Modifier.fillMaxSize())
         Box(
             Modifier
                 .fillMaxSize(0.84f)
@@ -97,11 +91,18 @@ fun PlaylistRing(
                 .background(Brush.linearGradient(listOf(Color(0xFF5A636D), Color(0xFF1A1D20)))),
         ) {
             if (coverUrl != null) {
+                val zoom = coverZoom(coverUrl)
                 AsyncImage(
                     model = coverUrl,
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .graphicsLayer {
+                                scaleX = zoom
+                                scaleY = zoom
+                            },
                 )
             }
             Box(

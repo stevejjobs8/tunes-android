@@ -71,6 +71,29 @@ val EngravedShadow = Shadow(color = Color.White.copy(alpha = 0.7f), offset = Off
 
 fun TextStyle.engraved() = copy(shadow = EngravedShadow)
 
+/**
+ * Video thumbnails (i.ytimg.com) are 4:3 frames with the square art letterboxed and pillarboxed inside,
+ * so zoom past the black bars; album art from googleusercontent is already square.
+ */
+fun coverZoom(url: String?): Float = if (url?.contains("ytimg.com") == true) 1.34f else 1f
+
+/** The spun-steel ring texture, clipped to a clean circle so its slightly uneven edge never shows. */
+@Composable
+fun RingTexture(modifier: Modifier = Modifier) {
+    Image(
+        painter = painterResource(R.drawable.tunes_ring),
+        contentDescription = null,
+        contentScale = ContentScale.Crop,
+        modifier =
+            modifier
+                .clip(CircleShape)
+                .graphicsLayer {
+                    scaleX = 1.04f
+                    scaleY = 1.04f
+                },
+    )
+}
+
 /** Brushed aluminum background. */
 @Composable
 fun MetalPlate(
@@ -166,17 +189,7 @@ fun SpinningCoverRing(
     val haptic = LocalHapticFeedback.current
     val playIconAlpha by animateFloatAsState(if (isPlaying) 0f else 1f, tween(300), label = "playIcon")
     Box(modifier.size(ringSize), contentAlignment = Alignment.Center) {
-        Box(
-            Modifier
-                .fillMaxSize()
-                .shadow(18.dp, CircleShape)
-                .background(Color(0xFF8A9096), CircleShape),
-        )
-        Image(
-            painter = painterResource(R.drawable.tunes_ring),
-            contentDescription = null,
-            modifier = Modifier.fillMaxSize(),
-        )
+        RingTexture(Modifier.fillMaxSize().shadow(18.dp, CircleShape))
         Box(
             Modifier
                 .fillMaxSize(0.86f)
@@ -209,11 +222,18 @@ fun SpinningCoverRing(
                         .background(Brush.linearGradient(listOf(Color(0xFF5A636D), Color(0xFF1A1D20)))),
                 )
                 if (coverUrl != null) {
+                    val zoom = coverZoom(coverUrl)
                     AsyncImage(
                         model = coverUrl,
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize(),
+                        modifier =
+                            Modifier
+                                .fillMaxSize()
+                                .graphicsLayer {
+                                    scaleX = zoom
+                                    scaleY = zoom
+                                },
                     )
                 }
             }
