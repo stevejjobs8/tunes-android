@@ -137,15 +137,30 @@ fun TunesHomeOverlay(navController: NavController) {
     var query by rememberSaveable { mutableStateOf("") }
     var songs by remember { mutableStateOf<List<SongItem>>(emptyList()) }
     var searching by remember { mutableStateOf(false) }
+    var searchNote by remember { mutableStateOf<String?>(null) }
     val hits = songs.map { SearchHit(it.id, it.title, it.artists.joinToString { a -> a.name }, it.thumbnail) }
     fun runSearch() {
         val q = query.trim()
         if (q.isEmpty()) return
         scope.launch {
             searching = true
-            YouTube.search(q, YouTube.SearchFilter.FILTER_SONG).onSuccess { result ->
-                songs = result.items.filterIsInstance<SongItem>()
-            }
+            searchNote = null
+            // Same request as Metrolist's own search screen (known to work), then songs only.
+            val summary =
+                YouTube.searchSummary(q).map { page ->
+                    page.summaries.flatMap { it.items }.filterIsInstance<SongItem>().distinctBy { it.id }
+                }
+            val found =
+                summary.getOrNull()?.takeIf { it.isNotEmpty() }
+                    ?: YouTube.search(q, YouTube.SearchFilter.FILTER_SONG).map { it.items.filterIsInstance<SongItem>() }.getOrNull()
+            songs = found.orEmpty()
+            searchNote =
+                when {
+                    found == null -> "검색 실패: " + (summary.exceptionOrNull()?.let { it.message ?: it::class.simpleName } ?: "알 수 없음")
+                    found.isEmpty() -> "결과 없음"
+                    else -> null
+                }
+            summary.exceptionOrNull()?.let { android.util.Log.w("Tunes", "search failed", it) }
             searching = false
         }
     }
@@ -238,6 +253,7 @@ fun TunesHomeOverlay(navController: NavController) {
                 onSubmit = { runSearch() },
                 hits = hits,
                 searching = searching,
+                note = searchNote,
                 rings = rings,
                 onPick = { hit, bounds ->
                     val song = songs.firstOrNull { it.id == hit.id } ?: return@TunesSearchSheet

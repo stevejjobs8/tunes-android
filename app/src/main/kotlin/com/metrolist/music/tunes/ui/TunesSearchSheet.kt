@@ -102,6 +102,7 @@ fun TunesSearchSheet(
     onSubmit: () -> Unit,
     hits: List<SearchHit>,
     searching: Boolean,
+    note: String?,
     rings: List<RingItem>,
     onPick: (hit: SearchHit, coverBounds: Rect) -> Unit,
     onDropOnRing: (hit: SearchHit, ring: RingItem) -> Unit,
@@ -226,6 +227,12 @@ fun TunesSearchSheet(
                 }
                 if (searching) {
                     MetalLamp(on = true, modifier = Modifier.align(Alignment.TopCenter).padding(top = 12.dp))
+                } else if (note != null && hits.isEmpty()) {
+                    Text(
+                        note,
+                        style = TextStyle(fontSize = 13.sp, color = EngravedSubText).engraved(),
+                        modifier = Modifier.align(Alignment.TopCenter).padding(top = 24.dp, start = 24.dp, end = 24.dp),
+                    )
                 }
             }
 
