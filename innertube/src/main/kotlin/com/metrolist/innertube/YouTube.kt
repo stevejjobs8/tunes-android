@@ -1620,6 +1620,29 @@ object YouTube {
                     append("\n")
                 }
             }
+            if (sections.isEmpty()) {
+                // 튠즈 진단: 추천이 없을 때 유튜브가 보낸 칸 안의 글과 renderer 이름을 그대로 보여 줌
+                runCatching {
+                    val raw = innerTube.browse(WEB_REMIX, browseId = "FEmusic_home", params = params).bodyAsText()
+                    val texts = mutableListOf<String>()
+                    val kinds = linkedSetOf<String>()
+                    fun walk(e: kotlinx.serialization.json.JsonElement) {
+                        when (e) {
+                            is kotlinx.serialization.json.JsonObject -> e.forEach { (k, v) ->
+                                if (k.endsWith("Renderer") || k.endsWith("ViewModel")) kinds += k
+                                if ((k == "text" || k == "simpleText" || k == "content") && v is kotlinx.serialization.json.JsonPrimitive && v.isString) texts += v.content
+                                walk(v)
+                            }
+                            is kotlinx.serialization.json.JsonArray -> e.forEach { walk(it) }
+                            else -> {}
+                        }
+                    }
+                    Json.parseToJsonElement(raw).let { root ->
+                        (root as? kotlinx.serialization.json.JsonObject)?.get("contents")?.let { walk(it) }
+                    }
+                    homeDebug += "종류: " + kinds.take(25).joinToString() + "\n글: " + texts.take(25).joinToString(" | ")
+                }.onFailure { homeDebug += "원문 실패: $it" }
+            }
             HomePage(chips, sections, continuation)
         }
 
