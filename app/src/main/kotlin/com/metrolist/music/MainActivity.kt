@@ -606,7 +606,8 @@ class MainActivity : FragmentActivity() {
             }
 
         LaunchedEffect(useDarkTheme) {
-            setSystemBarAppearance(useDarkTheme)
+            // 튠즈: always light steel, so always dark status bar icons
+            setSystemBarAppearance(false)
         }
 
         val enableLandscapeScaling by rememberPreference(EnableLandscapeScalingKey, defaultValue = false)
