@@ -196,6 +196,7 @@ import com.metrolist.music.ui.screens.settings.ChangelogScreen
 import com.metrolist.music.ui.screens.settings.DarkMode
 import com.metrolist.music.ui.screens.settings.NavigationTab
 import com.metrolist.music.ui.theme.ColorSaver
+import com.metrolist.music.tunes.TunesHomeOverlay
 import com.metrolist.music.ui.theme.DefaultThemeColor
 import com.metrolist.music.ui.theme.MetrolistTheme
 import com.metrolist.music.ui.theme.extractThemeColor
@@ -605,7 +606,8 @@ class MainActivity : FragmentActivity() {
             }
 
         LaunchedEffect(useDarkTheme) {
-            setSystemBarAppearance(useDarkTheme)
+            // 튠즈: always light steel, so always dark status bar icons
+            setSystemBarAppearance(false)
         }
 
         val enableLandscapeScaling by rememberPreference(EnableLandscapeScalingKey, defaultValue = false)
@@ -1520,6 +1522,9 @@ class MainActivity : FragmentActivity() {
                             )
                         }
                     }
+
+                    // 튠즈: metal player as the main screen, over Metrolist's UI
+                    TunesHomeOverlay(navController)
                 }
             }
             }

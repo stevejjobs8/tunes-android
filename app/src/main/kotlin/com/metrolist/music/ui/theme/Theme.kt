@@ -62,8 +62,9 @@ fun MetrolistTheme(
     }
 
     // Use standard MaterialTheme instead of MaterialExpressiveTheme
+    // 튠즈: every Material screen wears the brushed-steel colors
     MaterialTheme(
-        colorScheme = colorScheme,
+        colorScheme = com.metrolist.music.tunes.ui.TunesSteelColors,
         content = content,
     )
 }
