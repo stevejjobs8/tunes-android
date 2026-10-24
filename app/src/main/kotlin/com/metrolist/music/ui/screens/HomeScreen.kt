@@ -666,6 +666,7 @@ fun HomeScreen(
     val similarRecommendations by viewModel.similarRecommendations.collectAsStateWithLifecycle()
     val accountPlaylists by viewModel.accountPlaylists.collectAsStateWithLifecycle()
     val homePage by viewModel.homePage.collectAsStateWithLifecycle()
+    val youtubeHomeNote by viewModel.youtubeHomeNote.collectAsStateWithLifecycle()
     val explorePage by viewModel.explorePage.collectAsStateWithLifecycle()
     val dailyDiscover by viewModel.dailyDiscover.collectAsStateWithLifecycle()
     val communityPlaylists by viewModel.communityPlaylists.collectAsStateWithLifecycle()
@@ -1196,6 +1197,14 @@ fun HomeScreen(
                         onValueUpdate = {
                             viewModel.toggleChip(it)
                         },
+                    )
+                }
+
+                item(key = "youtube_home_note") {
+                    Text(
+                        text = "유튜브 홈: ${youtubeHomeNote ?: "기다리는 중"}",
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(16.dp),
                     )
                 }
 
