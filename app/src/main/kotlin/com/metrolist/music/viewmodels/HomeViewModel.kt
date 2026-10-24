@@ -52,6 +52,8 @@ import com.metrolist.music.utils.reportException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -466,7 +468,8 @@ class HomeViewModel @Inject constructor(
             }
 
             launch(Dispatchers.IO) {
-                YouTube.home().onSuccess { page ->
+                YouTube.home().onSuccess { ytPage ->
+                    val page = if (ytPage.sections.isEmpty()) ytPage.copy(sections = radioSections()) else ytPage
                     homePage.value = page.copy(
                         sections = page.sections.mapNotNull { section ->
                             val filtered = section.items
@@ -573,6 +576,34 @@ class HomeViewModel @Inject constructor(
             allYtItems.value = similarRecommendations.value?.flatMap { it.items }.orEmpty() +
                     homePage.value?.sections?.flatMap { it.items }.orEmpty()
         }
+    }
+
+    // 튠즈: in Korea, YouTube Music answers free accounts with an empty home ("only available
+    // to Premium members"), while radios still work. Fill the home with the radios of songs
+    // played lately instead, one shelf per song.
+    private suspend fun radioSections(): List<HomePage.Section> = coroutineScope {
+        val seeds = database.mostPlayedSongs(fromTimeStamp = LocalDateTime.now().minusWeeks(4), limit = 12).first()
+            .ifEmpty { database.quickPicks().first() }
+            .distinctBy { it.id }
+            .shuffled()
+            .take(6)
+        seeds.map { song ->
+            async {
+                val items = YouTube.next(WatchEndpoint(videoId = song.id, playlistId = "RDAMVM${song.id}"))
+                    .getOrNull()?.items.orEmpty()
+                    .filter { it.id != song.id }
+                    .distinctBy { it.id }
+                    .take(20)
+                if (items.isEmpty()) null
+                else HomePage.Section(
+                    title = song.song.title,
+                    label = "이 곡과 비슷한",
+                    thumbnail = song.song.thumbnailUrl,
+                    endpoint = null,
+                    items = items,
+                )
+            }
+        }.awaitAll().filterNotNull()
     }
 
     private val _isLoadingMore = MutableStateFlow(false)
