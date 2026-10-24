@@ -11,6 +11,12 @@ name: Build Tunes APK
 
 on:
   workflow_dispatch:
+    inputs:
+      build_type:
+        description: "release (minified) or debug (for testing)"
+        default: release
+        type: choice
+        options: [release, debug]
   push:
     branches: ["main"]
     paths-ignore:
@@ -46,8 +52,9 @@ jobs:
       - name: Build APK
         run: |
           chmod +x gradlew
-          ./gradlew --console=plain assembleIzzyRelease --warning-mode summary
+          ./gradlew --console=plain assembleIzzy${BUILD_TYPE^} --warning-mode summary
         env:
+          BUILD_TYPE: ${{ inputs.build_type || 'release' }}
           METROLIST_APPLICATION_ID: com.stevejjobs8.tunes
           METROLIST_APP_NAME: 튠즈
           METROLIST_BUILD_COMMIT: ${{ github.sha }}
@@ -69,7 +76,7 @@ jobs:
               -alias tunes -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Tunes"
           fi
           export PASS
-          APK=$(find app/build/outputs/apk/izzy/release -name "*.apk" | head -n1)
+          APK=$(find app/build/outputs/apk/izzy -name "*.apk" | head -n1)
           BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n1)
           "$BT/zipalign" -f -p 4 "$APK" aligned.apk
           "$BT/apksigner" sign --ks "$RUNNER_TEMP/tunes.keystore" --ks-pass env:PASS \
@@ -83,11 +90,30 @@ jobs:
           path: tunes.apk
 
       - name: Publish to the tunes-latest release
-        if: github.event_name != 'pull_request'
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: tunes-latest
           name: 튠즈 최신 빌드
           body: "커밋 ${{ github.sha }} 에서 만든 설치 파일입니다. 폰에서 tunes.apk 를 받아 설치하세요."
           make_latest: true
+          files: tunes.apk
+
+      # Test branches run by hand (workflow_dispatch) get their own pre-release,
+      # tunes-test-<branch>, so a phone can try them without touching tunes-latest
+      - name: Name the test release
+        id: testtag
+        if: github.ref != 'refs/heads/main' && github.event_name == 'workflow_dispatch'
+        run: echo "tag=tunes-test-${GITHUB_REF_NAME//\//-}" >> "$GITHUB_OUTPUT"
+
+      - name: Publish the test release
+        if: steps.testtag.outputs.tag != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.testtag.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: "튠즈 시험 빌드 (${{ github.ref_name }})"
+          body: "시험용. 커밋 ${{ github.sha }}"
+          prerelease: true
+          make_latest: false
           files: tunes.apk
