@@ -1,0 +1,119 @@
+# 튠즈: builds the personal APK on GitHub's own runners and publishes it as the
+# "tunes-latest" release, so the phone can download it from one fixed link.
+# Upstream Metrolist workflows need paid runners and Metrolist's signing secrets,
+# so their jobs carry `if: github.repository == 'MetrolistGroup/Metrolist'` and skip here.
+#
+# Signing: set the repository secrets TUNES_KEYSTORE_B64 (base64 of a .keystore)
+# and TUNES_KEYSTORE_PASSWORD (store and key password, alias "tunes") so every
+# build has the same signature and installs over the previous one. Without them
+# the build signs with a throwaway key, and each new APK must be installed fresh.
+name: Build Tunes APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: "release (minified) or debug (for testing)"
+        default: release
+        type: choice
+        options: [release, debug]
+  push:
+    branches: ["main"]
+    paths-ignore:
+      - "**.md"
+      - "fastlane/**"
+      - "assets/**"
+  # Design and feature branches get a test APK on their PR (not published)
+  pull_request:
+    branches: ["main"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: tunes-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: github.repository != 'MetrolistGroup/Metrolist'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: "temurin"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build APK
+        run: |
+          chmod +x gradlew
+          ./gradlew --console=plain assembleIzzy${BUILD_TYPE^} --warning-mode summary
+        env:
+          BUILD_TYPE: ${{ inputs.build_type || 'release' }}
+          METROLIST_APPLICATION_ID: com.stevejjobs8.tunes
+          METROLIST_APP_NAME: 튠즈
+          METROLIST_BUILD_COMMIT: ${{ github.sha }}
+          PULL_REQUEST: "false"
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+
+      - name: Sign APK
+        env:
+          KEYSTORE_B64: ${{ secrets.TUNES_KEYSTORE_B64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.TUNES_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ] && [ -n "$KEYSTORE_PASSWORD" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/tunes.keystore"
+            PASS="$KEYSTORE_PASSWORD"
+          else
+            echo "::warning::TUNES_KEYSTORE_B64 / TUNES_KEYSTORE_PASSWORD not set; signing with a throwaway key"
+            PASS=$(openssl rand -hex 16)
+            keytool -genkeypair -keystore "$RUNNER_TEMP/tunes.keystore" -storepass "$PASS" -keypass "$PASS" \
+              -alias tunes -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Tunes"
+          fi
+          export PASS
+          APK=$(find app/build/outputs/apk/izzy -name "*.apk" | head -n1)
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n1)
+          "$BT/zipalign" -f -p 4 "$APK" aligned.apk
+          "$BT/apksigner" sign --ks "$RUNNER_TEMP/tunes.keystore" --ks-pass env:PASS \
+            --ks-key-alias tunes --key-pass env:PASS --out tunes.apk aligned.apk
+          rm -f "$RUNNER_TEMP/tunes.keystore"
+        shell: bash
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tunes-apk
+          path: tunes.apk
+
+      - name: Publish to the tunes-latest release
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: tunes-latest
+          name: 튠즈 최신 빌드
+          body: "커밋 ${{ github.sha }} 에서 만든 설치 파일입니다. 폰에서 tunes.apk 를 받아 설치하세요."
+          make_latest: true
+          files: tunes.apk
+
+      # Test branches run by hand (workflow_dispatch) get their own pre-release,
+      # tunes-test-<branch>, so a phone can try them without touching tunes-latest
+      - name: Name the test release
+        id: testtag
+        if: github.ref != 'refs/heads/main' && github.event_name == 'workflow_dispatch'
+        run: echo "tag=tunes-test-${GITHUB_REF_NAME//\//-}" >> "$GITHUB_OUTPUT"
+
+      - name: Publish the test release
+        if: steps.testtag.outputs.tag != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.testtag.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: "튠즈 시험 빌드 (${{ github.ref_name }})"
+          body: "시험용. 커밋 ${{ github.sha }}"
+          prerelease: true
+          make_latest: false
+          files: tunes.apk

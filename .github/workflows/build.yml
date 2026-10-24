@@ -26,7 +26,7 @@ concurrency:
 jobs:
   build_release:
     name: Build Release (${{ matrix.variant }})
-    if: github.actor != 'dependabot[bot]' && github.actor != 'renovate[bot]'
+    if: github.repository == 'MetrolistGroup/Metrolist' && (github.actor != 'dependabot[bot]' && github.actor != 'renovate[bot]')
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 15
 
@@ -42,10 +42,10 @@ jobs:
             variantName: Gms
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Set up JDK 21
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v6
         with:
           java-version: "21"
           distribution: "temurin"
@@ -78,7 +78,7 @@ jobs:
           keyAlias: ${{ secrets.KEY_ALIAS }}
           keyStorePassword: ${{ secrets.KEYSTORE_PASSWORD }}
           keyPassword: ${{ secrets.KEY_PASSWORD }}
-          buildToolsVersion: 35.0.0
+          buildToolsVersion: 36.0.0
 
       - name: Move signed APK
         run: |
@@ -92,14 +92,14 @@ jobs:
           find "$OUTPUT_DIR" -name "*-signed.apk" -o -name "*-unsigned-signed.apk" | xargs -I{} mv {} "$OUTPUT_DIR/out/$TARGET_NAME"
 
       - name: Upload Signed APK
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.variant == 'gms' && 'app-with-Google-Cast' || 'app-release' }}
           path: app/build/outputs/apk/${{ matrix.variant }}/release/out/*
 
   build_debug:
     name: Build Debug (${{ matrix.variant }})
-    if: github.actor != 'dependabot[bot]' && github.actor != 'renovate[bot]'
+    if: github.repository == 'MetrolistGroup/Metrolist' && (github.actor != 'dependabot[bot]' && github.actor != 'renovate[bot]')
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 15
 
@@ -115,10 +115,10 @@ jobs:
             variantName: Gms
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Set up JDK 21
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v6
         with:
           java-version: "21"
           distribution: "temurin"
@@ -150,21 +150,21 @@ jobs:
           LASTFM_SECRET: ${{ secrets.LASTFM_SECRET }}
 
       - name: Upload Debug APK
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.variant == 'gms' && 'app-debug-gms' || 'app-debug' }}
           path: app/build/outputs/apk/${{ matrix.variant }}/debug/*.apk
 
   publish_nightly:
     name: Publish Nightly Release
-    if: github.event_name == 'push'
+    if: github.repository == 'MetrolistGroup/Metrolist' && (github.event_name == 'push')
     needs: [build_release, build_debug]
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
     steps:
       - name: Download Signed APK
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: app-with-Google-Cast
           path: nightly
