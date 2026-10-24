@@ -35,12 +35,16 @@ constructor(
             .stateIn(viewModelScope, SharingStarted.Eagerly, null)
     var otherVersions = MutableStateFlow<List<AlbumItem>>(emptyList())
 
+    // 튠즈 diagnostics: what happened to the album request, shown under the spinner
+    val loadStatus = MutableStateFlow("요청 중…")
+
     init {
         viewModelScope.launch {
             val album = database.album(albumId).first()
             YouTube
                 .album(albumId)
                 .onSuccess {
+                    loadStatus.value = "응답 받음: 곡 ${it.songs.size}개, 다른 버전 ${it.otherVersions.size}개, playlistId=${it.album.playlistId}"
                     playlistId.value = it.album.playlistId
                     otherVersions.value = it.otherVersions
                     database.transaction {
@@ -51,6 +55,7 @@ constructor(
                         }
                     }
                 }.onFailure {
+                    loadStatus.value = "실패: " + it.stackTraceToString().lineSequence().take(14).joinToString("\n")
                     reportException(it)
                     if (it.message?.contains("NOT_FOUND") == true) {
                         database.query {

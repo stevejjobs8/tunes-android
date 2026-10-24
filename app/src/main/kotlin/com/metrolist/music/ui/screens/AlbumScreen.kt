@@ -120,6 +120,7 @@ fun AlbumScreen(
     val playlistId by viewModel.playlistId.collectAsStateWithLifecycle()
     val albumWithSongs by viewModel.albumWithSongs.collectAsStateWithLifecycle()
     val otherVersions by viewModel.otherVersions.collectAsStateWithLifecycle()
+    val loadStatus by viewModel.loadStatus.collectAsStateWithLifecycle()
     val hideExplicit by rememberPreference(key = HideExplicitKey, defaultValue = false)
     val hideVideoSongs by rememberPreference(key = HideVideoSongsKey, defaultValue = false)
 
@@ -515,6 +516,15 @@ fun AlbumScreen(
                     contentAlignment = Alignment.Center,
                 ) {
                     ContainedLoadingIndicator()
+                }
+            }
+            item(key = "load_status") {
+                androidx.compose.foundation.text.selection.SelectionContainer {
+                    Text(
+                        text = "albumId=${viewModel.albumId}\nDB 곡 수=${albumWithSongs?.songs?.size}\n$loadStatus",
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(16.dp),
+                    )
                 }
             }
         }
