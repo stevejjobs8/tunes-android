@@ -46,6 +46,8 @@ android {
         buildConfigField("String", "BASE_VERSION_NAME", "\"$baseVersionName\"")
         buildCommit?.let { versionName = "$baseVersionName+$it" }
         resValue("string", "app_name", appNameOverride ?: "Metrolist")
+        // 튠즈: which home to show — "pad" or "river" (flow steering), empty = the normal home
+        buildConfigField("String", "TUNES_FLOW", "\"${System.getenv("TUNES_FLOW").orEmpty()}\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true

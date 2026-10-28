@@ -6,6 +6,9 @@
 package com.metrolist.music.ui.screens
 
 import android.app.Activity
+import com.metrolist.music.BuildConfig
+import com.metrolist.music.tunes.flow.FlowPadScreen
+import com.metrolist.music.tunes.flow.FlowRiverScreen
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -74,7 +77,11 @@ fun NavGraphBuilder.navigationBuilder(
     snackbarHostState: SnackbarHostState,
 ) {
     composable(Screens.Home.route) {
-        HomeScreen(snackbarHostState = snackbarHostState)
+        when (BuildConfig.TUNES_FLOW) {
+            "pad" -> FlowPadScreen()
+            "river" -> FlowRiverScreen()
+            else -> HomeScreen(snackbarHostState = snackbarHostState)
+        }
     }
 
     composable(Screens.Search.route) { backStackEntry ->

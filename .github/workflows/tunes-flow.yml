@@ -1,0 +1,107 @@
+# 튠즈 흐름 조종 실험: builds two APKs that install side by side on one phone,
+#   튠즈 패드 (com.stevejjobs8.tunes.pad)   — home is the steering pad
+#   튠즈 물길 (com.stevejjobs8.tunes.river) — home is the river
+# and puts both on the "tunes-flow" pre-release (tunes-latest is not touched).
+name: Build Tunes flow APKs
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["claude/project-thread-wnk6sn"]
+    paths:
+      - "app/**"
+      - ".github/workflows/tunes-flow.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: tunes-flow-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: github.repository != 'MetrolistGroup/Metrolist'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - flow: pad
+            name: 튠즈 패드
+          - flow: river
+            name: 튠즈 물길
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: "temurin"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build APK
+        run: |
+          chmod +x gradlew
+          ./gradlew --console=plain assembleIzzyRelease --warning-mode summary
+        env:
+          METROLIST_APPLICATION_ID: com.stevejjobs8.tunes.${{ matrix.flow }}
+          METROLIST_APP_NAME: ${{ matrix.name }}
+          METROLIST_BUILD_COMMIT: ${{ github.sha }}
+          TUNES_FLOW: ${{ matrix.flow }}
+          PULL_REQUEST: "false"
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+
+      - name: Sign APK
+        env:
+          KEYSTORE_B64: ${{ secrets.TUNES_KEYSTORE_B64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.TUNES_KEYSTORE_PASSWORD }}
+          OUT: tunes-${{ matrix.flow }}.apk
+        run: |
+          if [ -n "$KEYSTORE_B64" ] && [ -n "$KEYSTORE_PASSWORD" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/tunes.keystore"
+            PASS="$KEYSTORE_PASSWORD"
+          else
+            echo "::warning::signing secrets not set; signing with a throwaway key"
+            PASS=$(openssl rand -hex 16)
+            keytool -genkeypair -keystore "$RUNNER_TEMP/tunes.keystore" -storepass "$PASS" -keypass "$PASS" \
+              -alias tunes -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Tunes"
+          fi
+          export PASS
+          APK=$(find app/build/outputs/apk/izzy -name "*.apk" | head -n1)
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n1)
+          "$BT/zipalign" -f -p 4 "$APK" aligned.apk
+          "$BT/apksigner" sign --ks "$RUNNER_TEMP/tunes.keystore" --ks-pass env:PASS \
+            --ks-key-alias tunes --key-pass env:PASS --out "$OUT" aligned.apk
+          rm -f "$RUNNER_TEMP/tunes.keystore"
+        shell: bash
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tunes-${{ matrix.flow }}
+          path: tunes-${{ matrix.flow }}.apk
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: apks
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: tunes-flow
+          target_commitish: ${{ github.sha }}
+          name: "튠즈 흐름 조종 실험 (패드 · 물길)"
+          body: |
+            두 앱은 따로 깔려요. 폰에서 둘 다 받아 설치해 비교해 보세요.
+            - tunes-pad.apk: 튠즈 패드
+            - tunes-river.apk: 튠즈 물길
+            커밋 ${{ github.sha }}
+          prerelease: true
+          make_latest: false
+          files: apks/*.apk
