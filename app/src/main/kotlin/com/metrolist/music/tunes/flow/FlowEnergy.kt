@@ -21,17 +21,27 @@ import java.net.URLEncoder
 class FlowEnergy(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences("tunes_flow_energy", Context.MODE_PRIVATE)
 
-    /** Returns the energy and whether it was measured (true) or guessed (false). */
-    suspend fun lookup(meta: MediaMetadata): Pair<Float, Boolean> {
+    /** Instant value: the cached measurement, else a guess from the title. */
+    fun quick(meta: MediaMetadata): Pair<Float, Boolean> {
         val cached = prefs.getFloat(meta.id, -1f)
-        if (cached >= 0f) return cached to true
-        val measured = withContext(Dispatchers.IO) { runCatching { deezer(meta) }.getOrNull() }
-        if (measured != null) {
-            prefs.edit().putFloat(meta.id, measured).apply()
-            return measured to true
-        }
-        return guess(meta) to false
+        return if (cached >= 0f) cached to true else guess(meta) to false
     }
+
+    /** Asks Deezer; null when it doesn't know the song or can't be reached. */
+    suspend fun measure(meta: MediaMetadata): Float? {
+        if (failures >= 5) return null
+        val measured = withContext(Dispatchers.IO) {
+            runCatching { deezer(meta) }
+                .onSuccess { failures = 0 }
+                .onFailure { failures++ }
+                .getOrNull()
+        }
+        if (measured != null) prefs.edit().putFloat(meta.id, measured).apply()
+        return measured
+    }
+
+    // After several network errors in a row Deezer is treated as unreachable for this run
+    @Volatile private var failures = 0
 
     private fun deezer(meta: MediaMetadata): Float? {
         val artist = meta.artists.firstOrNull()?.name.orEmpty()
@@ -62,8 +72,8 @@ class FlowEnergy(context: Context) {
     private fun get(url: String): JSONObject? {
         val conn = URL(url).openConnection() as HttpURLConnection
         return try {
-            conn.connectTimeout = 6000
-            conn.readTimeout = 6000
+            conn.connectTimeout = 3000
+            conn.readTimeout = 3000
             if (conn.responseCode != 200) return null
             JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
         } finally {

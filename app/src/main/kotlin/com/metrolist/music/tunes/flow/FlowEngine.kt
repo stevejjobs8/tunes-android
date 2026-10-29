@@ -16,6 +16,7 @@ import android.content.Context
 import com.metrolist.innertube.YouTube
 import com.metrolist.innertube.models.WatchEndpoint
 import com.metrolist.music.db.MusicDatabase
+import com.metrolist.music.extensions.metadata
 import com.metrolist.music.extensions.toMediaItem
 import com.metrolist.music.models.MediaMetadata
 import com.metrolist.music.models.toMediaMetadata
@@ -25,8 +26,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -153,37 +152,73 @@ object FlowEngine {
     }
 
     private suspend fun seed(meta: MediaMetadata) {
+        // Whatever the player already has queued is a free first batch
+        add(queuedSongs())
         if (!seeded.add(meta.id)) return
         _loading.value = true
         val items = withContext(Dispatchers.IO) {
-            YouTube.next(WatchEndpoint(videoId = meta.id, playlistId = "RDAMVM${meta.id}")).getOrNull()?.items.orEmpty()
+            // Music radio first; plain videos often get an empty radio, so then use the
+            // ordinary "up next" list and the related songs, like YouTubeQueue does
+            val radio = YouTube.next(WatchEndpoint(videoId = meta.id, playlistId = "RDAMVM${meta.id}"))
+                .getOrNull()?.items.orEmpty()
+            if (radio.size > 1) return@withContext radio
+            val plain = YouTube.next(WatchEndpoint(videoId = meta.id)).getOrNull()
+            val related = plain?.relatedEndpoint?.let { YouTube.related(it).getOrNull()?.songs }.orEmpty()
+            plain?.items.orEmpty() + related
         }
+        // Nothing came back (network?): let the next song change try again
+        if (items.isEmpty()) seeded.remove(meta.id)
         add(items.map { it.toMediaMetadata() }.filter { it.id != meta.id })
         _loading.value = false
     }
 
+    private fun queuedSongs(): List<MediaMetadata> = runCatching {
+        val player = connection?.player ?: return emptyList()
+        (0 until player.mediaItemCount).mapNotNull { player.getMediaItemAt(it).metadata }
+    }.getOrDefault(emptyList())
+
+    /**
+     * Puts songs on the map right away (cached energy or a guess from the title),
+     * then measures the guessed ones on Deezer in the background and moves them.
+     */
     private suspend fun add(metas: List<MediaMetadata>) {
-        val fresh = metas.distinctBy { it.id }.filter { it.id !in entries && pending.add(it.id) }
+        val fresh = metas.distinctBy { it.id }.filter { it.id !in entries }
         if (fresh.isEmpty()) return
         val e = energy ?: return
         val db = database
-        val results = fresh.map { meta ->
-            scope.async {
-                limit.withPermit {
-                    val (raw, measured) = e.lookup(meta)
-                    val playMs = withContext(Dispatchers.IO) { db?.getSongById(meta.id)?.song?.totalPlayTime ?: 0L }
-                    val minutes = playMs / 60000.0
-                    val novelty = (1.0 - ln(1.0 + minutes) / ln(31.0)).coerceIn(0.0, 1.0).toFloat()
-                    Entry(meta, raw, measured, novelty)
-                }
-            }
-        }.awaitAll()
-        results.forEach {
-            entries[it.meta.id] = it
-            pending.remove(it.meta.id)
+        val plays = withContext(Dispatchers.IO) {
+            fresh.associate { it.id to (runCatching { db?.getSongById(it.id)?.song?.totalPlayTime }.getOrNull() ?: 0L) }
+        }
+        fresh.forEach { meta ->
+            val minutes = (plays[meta.id] ?: 0L) / 60000.0
+            val novelty = (1.0 - ln(1.0 + minutes) / ln(31.0)).coerceIn(0.0, 1.0).toFloat()
+            val (raw, measured) = e.quick(meta)
+            entries[meta.id] = Entry(meta, raw, measured, novelty)
         }
         trim()
         publish()
+        fresh.filter { entries[it.id]?.measured == false && pending.add(it.id) }.forEach { meta ->
+            scope.launch {
+                val value = limit.withPermit { e.measure(meta) }
+                pending.remove(meta.id)
+                val old = entries[meta.id] ?: return@launch
+                if (value == null) return@launch
+                entries[meta.id] = Entry(old.meta, value, true, old.novelty)
+                publishSoon()
+            }
+        }
+    }
+
+    private var publishJob: Job? = null
+
+    /** Measurements arrive one by one; move the dots and redo the plan a little later in one go. */
+    private fun publishSoon() {
+        if (publishJob?.isActive == true) return
+        publishJob = scope.launch {
+            delay(700)
+            publish()
+            replan(apply = _active.value)
+        }
     }
 
     private fun trim() {
